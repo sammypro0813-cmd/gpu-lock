@@ -113,7 +113,7 @@ struct ContentView: View {
                     .font(.footnote)
             }
             ForEach(engine.gpuGroups) { group in
-                ForEach(group.profiles) { profile in
+                ForEach(group.gpuProfiles) { profile in
                     profileRow(group, profile)
                 }
             }
@@ -132,7 +132,7 @@ struct ContentView: View {
 
     private var allConditionsSection: some View {
         Section("전체 조건 목록") {
-            ForEach(engine.otherGroups) { group in
+            ForEach(engine.groups) { group in
                 DisclosureGroup(group.identifier) {
                     ForEach(group.profiles) { profile in
                         profileRow(group, profile)

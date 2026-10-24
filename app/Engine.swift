@@ -64,7 +64,6 @@ final class Engine: ObservableObject {
     }
 
     var gpuGroups: [ConditionGroup] { groups.filter(\.isGPU) }
-    var otherGroups: [ConditionGroup] { groups.filter { !$0.isGPU } }
 
     func log(_ text: String) {
         let stamp = Date().formatted(date: .omitted, time: .standard)

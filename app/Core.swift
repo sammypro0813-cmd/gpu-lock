@@ -22,9 +22,16 @@ struct ConditionGroup: Codable, Hashable, Identifiable {
     let profiles: [ConditionProfile]
     var id: String { identifier }
 
+    /// Only the GPU performance state group, not thermal conditions whose
+    /// descriptions merely mention the GPU.
     var isGPU: Bool {
         identifier.localizedCaseInsensitiveContains("gpu")
-            || profiles.contains { $0.description.localizedCaseInsensitiveContains("gpu") }
+            || profiles.contains { $0.identifier.hasPrefix("GPUPerformanceState") }
+    }
+
+    /// Profiles to show in the GPU section.
+    var gpuProfiles: [ConditionProfile] {
+        profiles.filter { $0.identifier.hasPrefix("GPUPerformanceState") || identifier.localizedCaseInsensitiveContains("gpu") }
     }
 }
 
