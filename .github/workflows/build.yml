@@ -1,0 +1,90 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust for iOS
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-apple-ios
+          rustup default stable
+          rustc --version
+          xcodebuild -version
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            core/target
+          key: rust-ios-${{ hashFiles('core/Cargo.lock') }}
+
+      - name: Build Rust core (idevice)
+        working-directory: core
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        run: cargo build --release --locked --target aarch64-apple-ios
+
+      - name: Download Developer Disk Image (cryptex)
+        run: |
+          set -euo pipefail
+          mkdir -p build/DDI
+          base=https://raw.githubusercontent.com/doronz88/DeveloperDiskImage/main/PersonalizedImages/Xcode_iOS_DDI_Cryptex
+          for f in BuildManifest.plist Image.dmg Image.dmg.trustcache Image.dmg.cryptex_info Image.dmg.root_hash; do
+            curl -fsSL --retry 3 -o "build/DDI/$f" "$base/$f"
+          done
+          ls -la build/DDI
+
+      - name: Build app
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          APP=build/Payload/GPULock.app
+          mkdir -p "$APP"
+          xcrun --sdk iphoneos swiftc \
+            -target arm64-apple-ios17.0 -sdk "$SDK" \
+            -swift-version 5 -O -parse-as-library \
+            -module-name GPULock \
+            -import-objc-header app/GPULock-Bridge.h \
+            app/*.swift \
+            -L core/target/aarch64-apple-ios/release -lgpulock_core \
+            -framework Security -framework CoreFoundation -framework SystemConfiguration \
+            -Xlinker -dead_strip \
+            -o "$APP/GPULock"
+          cp app/Info.plist "$APP/Info.plist"
+          cp -R build/DDI "$APP/DDI"
+          plutil -lint "$APP/Info.plist"
+          codesign --force --sign - --timestamp=none "$APP"
+          (cd build && zip -qry GPULock.ipa Payload)
+          ls -la build/GPULock.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GPULock-ipa
+          path: build/GPULock.ipa
+
+      - name: Publish to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest build/GPULock.ipa \
+            --title "GPU Lock (최신 빌드)" \
+            --notes "빌드 커밋: ${GITHUB_SHA::7}. 아래 GPULock.ipa를 받아 사이드로드 도구로 설치하세요."
